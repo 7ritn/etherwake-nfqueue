@@ -17,80 +17,142 @@
 #include <stdint.h>
 
 #include <arpa/inet.h>
-#include <libnetfilter_queue/libnetfilter_queue.h>
+
+#include <libmnl/libmnl.h>
 #include <linux/netfilter.h>
+#include <linux/netfilter/nfnetlink.h>
+
+#include <linux/types.h>
+#include <linux/netfilter/nfnetlink_queue.h>
+
+#include <libnetfilter_queue/libnetfilter_queue.h>
+#include <stdlib.h>
 
 #include "nfqueue.h"
 
 extern int debug;
 
-static int recv_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
-			 struct nfq_data *nfad, void *data);
+static int recv_callback(const struct nlmsghdr *nlh, void *data);
+
+static struct mnl_socket *nl;
 
 int nfqueue_receive(uint16_t queue_num, int (*callback)())
 {
-	int fd;
-	ssize_t len;
-	char buf[1024];
-	struct nfq_handle *h;
-	struct nfq_q_handle *qh;
+	size_t sizeof_buf = 0xFFF + MNL_SOCKET_BUFFER_SIZE / 2;
+	uint16_t portid;
+	char *buf;
+	struct nlmsghdr *nlh;
 
-	h = nfq_open();
-	if (!h) {
-		fprintf(stderr, "Failed opening nfq\n");
-		return 1;
+	nl = mnl_socket_open(NETLINK_NETFILTER);
+	if (nl == NULL) {
+		fprintf(stderr, "mnl_socket_open() failed\n");
+		return EXIT_FAILURE;
 	}
 
-	nfq_unbind_pf(h, AF_INET);
-	if (nfq_bind_pf(h, AF_INET) < 0) {
-		fprintf(stderr, "Failed to bind nfnetlink\n");
-		return 1;
+	portid = mnl_socket_get_portid(nl);
+
+	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
+		fprintf(stderr, "mnl_socket_bind() failed\n");
+		return EXIT_FAILURE;
 	}
 
-	qh = nfq_create_queue(h, queue_num, recv_callback, callback);
-	if (!qh) {
-		fprintf(stderr, "Failed to bind socket to queue\n");
-		return 1;
+	buf = malloc(sizeof_buf);
+	if (!buf) {
+		fprintf(stderr, "malloc() receive buffer failed\n");
+		return EXIT_FAILURE;
 	}
 
-	nfq_set_queue_flags(qh, NFQA_CFG_F_FAIL_OPEN, NFQA_CFG_F_FAIL_OPEN);
+	nlh = nfq_nlmsg_put(buf, NFQNL_MSG_CONFIG, queue_num);
+	nfq_nlmsg_cfg_put_cmd(nlh, AF_INET, NFQNL_CFG_CMD_BIND);
 
-	if (nfq_set_mode(qh, NFQNL_COPY_META, sizeof(buf)) < 0) {
-		fprintf(stderr, "Failed to set copy packet mode\n");
-		return 1;
+	if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
+		fprintf(stderr, "Failed binding socket to queue\n");
+		return EXIT_FAILURE;
 	}
 
-	fd = nfq_fd(h);
-	while ((len = recv(fd, buf, sizeof(buf), 0)) >= 0) {
-		if (debug)
-			printf("Read %zd bytes from NFQUEUE socket\n", len);
-		nfq_handle_packet(h, buf, len);
+	nlh = nfq_nlmsg_put(buf, NFQNL_MSG_CONFIG, queue_num);
+	nfq_nlmsg_cfg_put_params(nlh, NFQNL_COPY_META, 0xfff);
+
+	mnl_attr_put_u32(nlh, NFQA_CFG_FLAGS, htonl(NFQA_CFG_F_FAIL_OPEN));
+	mnl_attr_put_u32(nlh, NFQA_CFG_MASK, htonl(NFQA_CFG_F_FAIL_OPEN));
+
+	if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
+		fprintf(stderr, "Failed setting queue configuration\n");
+		return EXIT_FAILURE;
 	}
 
-	nfq_destroy_queue(qh);
-	nfq_close(h);
+	/* ENOBUFS is signalled to userspace when packets were lost
+	 * on kernel side.  In most cases, userspace isn't interested
+	 * in this information, so turn it off.
+	 */
+	int ret = 1;
+	mnl_socket_setsockopt(nl, NETLINK_NO_ENOBUFS, &ret, sizeof(int));
+
+	for (;;) {
+		ret = mnl_socket_recvfrom(nl, buf, sizeof_buf);
+		if (ret == -1) {
+			fprintf(stderr, "mnl_socket_recvfrom");
+			return (EXIT_FAILURE);
+		}
+
+		ret = mnl_cb_run(buf, ret, 0, portid, recv_callback, callback);
+		if (ret < 0) {
+			fprintf(stderr, "mnl_cb_run");
+			return (EXIT_FAILURE);
+		}
+	}
+
+	mnl_socket_close(nl);
 
 	return 0;
 }
 
-static int recv_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
-			 struct nfq_data *nfad, void *data)
+static int recv_callback(const struct nlmsghdr *nlh, void *data)
 {
-	int ret = 0;
-	uint32_t id;
-	struct nfqnl_msg_packet_hdr *h;
+	int ret = MNL_CB_OK;
+	int id, queue_num;
+	struct nfqnl_msg_packet_hdr *ph;
+	struct nfgenmsg *nfg;
+	struct nlattr *attr[NFQA_MAX + 1] = {};
+	struct nlmsghdr *nlh_ret;
 	int (*callback)() = data;
 
 	if (debug)
 		printf("Received NFQUEUE callback\n");
 	callback();
 
-	h = nfq_get_msg_packet_hdr(nfad);
-	if (h) {
-		if (debug)
-			printf("Issuing verdict\n");
-		id = ntohl(h->packet_id);
-		ret = nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	if (nfq_nlmsg_parse(nlh, attr) < 0) {
+		fprintf(stderr, "nfq_nlmsg_parse() failed");
+		return MNL_CB_ERROR;
+	}
+
+	nfg = mnl_nlmsg_get_payload(nlh);
+
+	if (attr[NFQA_PACKET_HDR] == NULL) {
+		fprintf(stderr, "metaheader not set\n");
+		return MNL_CB_ERROR;
+	}
+
+	ph = mnl_attr_get_payload(attr[NFQA_PACKET_HDR]);
+	if (!ph) {
+		fprintf(stderr, "failed getting payload of metaheader\n");
+		return MNL_CB_ERROR;
+	}
+
+	if (debug)
+		printf("Issuing verdict\n");
+
+	id = ntohl(ph->packet_id);
+	queue_num = ntohs(nfg->res_id);
+
+	char buf[MNL_SOCKET_BUFFER_SIZE];
+
+	nlh_ret = nfq_nlmsg_put(buf, NFQNL_MSG_VERDICT, queue_num);
+	nfq_nlmsg_verdict_put(nlh_ret, id, NF_ACCEPT);
+
+	if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
+		fprintf(stderr, "failed sending verdict");
+		return MNL_CB_ERROR;
 	}
 
 	return ret;
