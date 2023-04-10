@@ -14,7 +14,7 @@
 */
 
 #include <stdio.h>
-#include <stdint.h>
+#include <stdlib.h>
 
 #include <arpa/inet.h>
 
@@ -22,11 +22,9 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter/nfnetlink.h>
 
-#include <linux/types.h>
 #include <linux/netfilter/nfnetlink_queue.h>
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
-#include <stdlib.h>
 
 #include "nfqueue.h"
 
@@ -49,12 +47,12 @@ int nfqueue_receive(uint16_t queue_num, int (*callback)())
 		return EXIT_FAILURE;
 	}
 
-	portid = mnl_socket_get_portid(nl);
-
 	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
 		fprintf(stderr, "mnl_socket_bind() failed\n");
 		return EXIT_FAILURE;
 	}
+
+	portid = mnl_socket_get_portid(nl);
 
 	buf = malloc(sizeof_buf);
 	if (!buf) {
@@ -107,9 +105,28 @@ int nfqueue_receive(uint16_t queue_num, int (*callback)())
 	return 0;
 }
 
+static int
+nfq_send_verdict(int queue_num, int id)
+{
+	if (debug)
+		printf("Sending verdict for %i in queue %i\n", id, queue_num);
+
+	char buf[MNL_SOCKET_BUFFER_SIZE];
+	struct nlmsghdr *nlh;
+
+	nlh = nfq_nlmsg_put(buf, NFQNL_MSG_VERDICT, queue_num);
+	nfq_nlmsg_verdict_put(nlh, id, NF_ACCEPT);
+
+	if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
+		fprintf(stderr, "Failed sending verdict\n");
+		return MNL_CB_ERROR;
+	}
+
+	return MNL_CB_OK;
+}
+
 static int recv_callback(const struct nlmsghdr *nlh, void *data)
 {
-	int ret = MNL_CB_OK;
 	int id, queue_num;
 	struct nfqnl_msg_packet_hdr *ph;
 	struct nfgenmsg *nfg;
@@ -145,15 +162,5 @@ static int recv_callback(const struct nlmsghdr *nlh, void *data)
 	id = ntohl(ph->packet_id);
 	queue_num = ntohs(nfg->res_id);
 
-	char buf[MNL_SOCKET_BUFFER_SIZE];
-
-	nlh_ret = nfq_nlmsg_put(buf, NFQNL_MSG_VERDICT, queue_num);
-	nfq_nlmsg_verdict_put(nlh_ret, id, NF_ACCEPT);
-
-	if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
-		fprintf(stderr, "failed sending verdict");
-		return MNL_CB_ERROR;
-	}
-
-	return ret;
+	return nfq_send_verdict(queue_num, id);;
 }
