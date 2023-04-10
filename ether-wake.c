@@ -1,36 +1,36 @@
 /* etherwake-nfqueue.c: Send a magic packet to wake up sleeping machines. */
 
 static char version_msg[] =
-"etherwake-nfqueue.c: v1.09-n1 based on v1.09 11/12/2003 Donald Becker, http://www.scyld.com/";
+	"etherwake-nfqueue.c: v1.09-n1 based on v1.09 11/12/2003 Donald Becker, http://www.scyld.com/";
 static char brief_usage_msg[] =
-"usage: etherwake-nfqueue [-i <ifname>] [-p aa:bb:cc:dd[:ee:ff]] [-q <nfqueue_num>] 00:11:22:33:44:55\n"
-"   Use '-u' to see the complete set of options.\n";
+	"usage: etherwake-nfqueue [-i <ifname>] [-p aa:bb:cc:dd[:ee:ff]] [-q <nfqueue_num>] 00:11:22:33:44:55\n"
+	"   Use '-u' to see the complete set of options.\n";
 static char usage_msg[] =
-"usage: etherwake-nfqueue [-i <ifname>] [-p aa:bb:cc:dd[:ee:ff]] [-q <nfqueue_num>] 00:11:22:33:44:55\n"
-"\n"
-"	This program generates and transmits a Wake-On-LAN (WOL)\n"
-"	\"Magic Packet\", used for restarting machines that have been\n"
-"	soft-powered-down (ACPI D3-warm state).\n"
-"	It currently generates the standard AMD Magic Packet format, with\n"
-"	an optional password appended.\n"
-"\n"
-"	The single required parameter is the Ethernet MAC (station) address\n"
-"	of the machine to wake or a host ID with known NSS 'ethers' entry.\n"
-"	The MAC address may be found with the 'arp' program while the target\n"
-"	machine is awake.\n"
-"\n"
-"	Options:\n"
-"		-b	Send wake-up packet to the broadcast address.\n"
-"		-D	Increase the debug level.\n"
-"		-i ifname	Use interface IFNAME instead of the default 'eth0'.\n"
-"		-p <pw>		Append the four or six byte password PW to the packet.\n"
-"					A password is only required for a few adapter types.\n"
-"					The password may be specified in ethernet hex format\n"
-"					or dotted decimal (Internet address)\n"
-"		-p 00:22:44:66:88:aa\n"
-"		-p 192.168.1.1\n"
-"		-q 0		Send wake-up packet when any packet was received\n"
-"				in the specified NFQUEUE\n";
+	"usage: etherwake-nfqueue [-i <ifname>] [-p aa:bb:cc:dd[:ee:ff]] [-q <nfqueue_num>] 00:11:22:33:44:55\n"
+	"\n"
+	"	This program generates and transmits a Wake-On-LAN (WOL)\n"
+	"	\"Magic Packet\", used for restarting machines that have been\n"
+	"	soft-powered-down (ACPI D3-warm state).\n"
+	"	It currently generates the standard AMD Magic Packet format, with\n"
+	"	an optional password appended.\n"
+	"\n"
+	"	The single required parameter is the Ethernet MAC (station) address\n"
+	"	of the machine to wake or a host ID with known NSS 'ethers' entry.\n"
+	"	The MAC address may be found with the 'arp' program while the target\n"
+	"	machine is awake.\n"
+	"\n"
+	"	Options:\n"
+	"		-b	Send wake-up packet to the broadcast address.\n"
+	"		-D	Increase the debug level.\n"
+	"		-i ifname	Use interface IFNAME instead of the default 'eth0'.\n"
+	"		-p <pw>		Append the four or six byte password PW to the packet.\n"
+	"					A password is only required for a few adapter types.\n"
+	"					The password may be specified in ethernet hex format\n"
+	"					or dotted decimal (Internet address)\n"
+	"		-p 00:22:44:66:88:aa\n"
+	"		-p 192.168.1.1\n"
+	"		-q 0		Send wake-up packet when any packet was received\n"
+	"				in the specified NFQUEUE\n";
 
 /*
 	This program generates and transmits a Wake-On-LAN (WOL) "Magic Packet",
@@ -85,12 +85,12 @@ static char usage_msg[] =
 
 u_char outpack[1000];
 int pktsize;
-int s;				/* raw socket */
+int s; /* raw socket */
 
 #if defined(PF_PACKET)
 struct sockaddr_ll whereto;
 #else
-struct sockaddr whereto;	/* who to wake up */
+struct sockaddr whereto; /* who to wake up */
 #endif
 
 int debug = 0;
@@ -109,40 +109,56 @@ static int get_nfqueue_num(const char *optarg);
 int main(int argc, char *argv[])
 {
 	char *ifname = "eth0";
-	int one = 1;				/* True, for socket options. */
-	int errflag = 0, nfqueue_errflag = 0, verbose = 0, do_version = 0;
+	int one = 1; /* True, for socket options. */
+	int errflag =0, nfqueue_errflag = 0, verbose = 0, do_version = 0;
 	int perm_failure = 0;
 	int i, c;
 	struct ether_addr eaddr;
 
 	while ((c = getopt(argc, argv, "bDi:p:q:uvV")) != -1)
 		switch (c) {
-		case 'b': opt_broadcast++;	break;
-		case 'D': debug++;			break;
-		case 'i': ifname = optarg;	break;
-		case 'p': get_wol_pw(optarg); break;
+		case 'b':
+			opt_broadcast++;
+			break;
+		case 'D':
+			debug++;
+			break;
+		case 'i':
+			ifname = optarg;
+			break;
+		case 'p':
+			get_wol_pw(optarg);
+			break;
 		case 'q':
 			if (get_nfqueue_num(optarg) < 0)
 				nfqueue_errflag++;
 			break;
-		case 'u': printf("%s", usage_msg); return 0;
-		case 'v': verbose++;		break;
-		case 'V': do_version++;		break;
+		case 'u':
+			printf("%s", usage_msg);
+			return 0;
+		case 'v':
+			verbose++;
+			break;
+		case 'V':
+			do_version++;
+			break;
 		case '?':
 			errflag++;
 		}
 	if (verbose || do_version)
 		printf("%s\n", version_msg);
 	if (errflag) {
-		fprintf(stderr,"%s", brief_usage_msg);
+		fprintf(stderr, "%s", brief_usage_msg);
 		return 3;
 	}
 	if (nfqueue_errflag) {
-		fprintf(stderr, "The '-q' option needs a value between 0 and 65535\n");
+		fprintf(stderr,
+			"The '-q' option needs a value between 0 and 65535\n");
 		return 3;
 	}
 	if (optind == argc) {
-		fprintf(stderr, "Specify the Ethernet address as 00:11:22:33:44:55.\n");
+		fprintf(stderr,
+			"Specify the Ethernet address as 00:11:22:33:44:55.\n");
 		return 3;
 	}
 
@@ -156,7 +172,8 @@ int main(int argc, char *argv[])
 #endif
 	if (s < 0) {
 		if (errno == EPERM)
-			fprintf(stderr, "etherwake-nfqueue: This program must be run as root.\n");
+			fprintf(stderr,
+				"etherwake-nfqueue: This program must be run as root.\n");
 		else
 			perror("etherwake-nfqueue: socket");
 		perm_failure++;
@@ -169,37 +186,38 @@ int main(int argc, char *argv[])
 	*/
 	if (get_dest_addr(argv[optind], &eaddr) != 0)
 		return 3;
-	if (perm_failure && ! debug)
+	if (perm_failure && !debug)
 		return 2;
 
 	pktsize = get_fill(outpack, &eaddr);
 
 	/* Fill in the source address, if possible.
 	   The code to retrieve the local station address is Linux specific. */
-	if (! opt_no_src_addr) {
+	if (!opt_no_src_addr) {
 		struct ifreq if_hwaddr;
 		const char *hwaddr = if_hwaddr.ifr_hwaddr.sa_data;
 
 		strcpy(if_hwaddr.ifr_name, ifname);
 		if (ioctl(s, SIOCGIFHWADDR, &if_hwaddr) < 0) {
-			fprintf(stderr, "SIOCGIFHWADDR on %s failed: %s\n", ifname,
-					strerror(errno));
+			fprintf(stderr, "SIOCGIFHWADDR on %s failed: %s\n",
+				ifname, strerror(errno));
 			/* Magic packets still work if our source address is bogus, but
 			   we fail just to be anal. */
 			return 1;
 		}
-		memcpy(outpack+6, if_hwaddr.ifr_hwaddr.sa_data, 6);
+		memcpy(outpack + 6, if_hwaddr.ifr_hwaddr.sa_data, 6);
 
 		if (verbose) {
 			printf("The hardware address (SIOCGIFHWADDR) of %s is type %d  "
-				   "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x.\n", ifname,
-				   if_hwaddr.ifr_hwaddr.sa_family, hwaddr[0], hwaddr[1],
-				   hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
+			       "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x.\n",
+			       ifname, if_hwaddr.ifr_hwaddr.sa_family,
+			       hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3],
+			       hwaddr[4], hwaddr[5]);
 		}
 	}
 
 	if (wol_passwd_sz > 0) {
-		memcpy(outpack+pktsize, wol_passwd, wol_passwd_sz);
+		memcpy(outpack + pktsize, wol_passwd, wol_passwd_sz);
 		pktsize += wol_passwd_sz;
 	}
 
@@ -211,7 +229,8 @@ int main(int argc, char *argv[])
 	}
 
 	/* This is necessary for broadcasts to work */
-	if (setsockopt(s, SOL_SOCKET, SO_BROADCAST, (char *)&one, sizeof(one)) < 0)
+	if (setsockopt(s, SOL_SOCKET, SO_BROADCAST, (char *)&one, sizeof(one)) <
+	    0)
 		perror("setsockopt: SO_BROADCAST");
 
 #if defined(PF_PACKET)
@@ -219,8 +238,8 @@ int main(int argc, char *argv[])
 		struct ifreq ifr;
 		strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
 		if (ioctl(s, SIOCGIFINDEX, &ifr) == -1) {
-			fprintf(stderr, "SIOCGIFINDEX on %s failed: %s\n", ifname,
-					strerror(errno));
+			fprintf(stderr, "SIOCGIFINDEX on %s failed: %s\n",
+				ifname, strerror(errno));
 			return 1;
 		}
 		memset(&whereto, 0, sizeof(whereto));
@@ -230,7 +249,6 @@ int main(int argc, char *argv[])
 		   We do so because the code may change to match the docs. */
 		whereto.sll_halen = ETH_ALEN;
 		memcpy(whereto.sll_addr, outpack, ETH_ALEN);
-
 	}
 #else
 	whereto.sa_family = 0;
@@ -250,7 +268,7 @@ static int send_magic_packet()
 	int i;
 
 	if ((i = sendto(s, outpack, pktsize, 0, (struct sockaddr *)&whereto,
-					sizeof(whereto))) < 0)
+			sizeof(whereto))) < 0)
 		perror("sendto");
 	else if (debug)
 		printf("Sendto worked ! %d.\n", i);
@@ -263,7 +281,9 @@ static int send_magic_packet()
 #endif
 #ifdef USE_SENDMSG
 	{
-		struct msghdr msghdr = { 0,};
+		struct msghdr msghdr = {
+			0,
+		};
 		struct iovec iovector[1];
 		msghdr.msg_name = &whereto;
 		msghdr.msg_namelen = sizeof(whereto);
@@ -297,22 +317,23 @@ static int get_dest_addr(const char *hostid, struct ether_addr *eaddr)
 		*eaddr = *eap;
 		if (debug)
 			fprintf(stderr, "The target station address is %s.\n",
-					ether_ntoa(eaddr));
+				ether_ntoa(eaddr));
 	} else if (ether_hostton(hostid, eaddr) == 0) {
 		if (debug)
-			fprintf(stderr, "Station address for hostname %s is %s.\n",
-					hostid, ether_ntoa(eaddr));
+			fprintf(stderr,
+				"Station address for hostname %s is %s.\n",
+				hostid, ether_ntoa(eaddr));
 	} else {
-		(void)fprintf(stderr,
-					  "etherwake-nfqueue: The Magic Packet host address must be "
-					  "specified as\n"
-					  "  - a station address, 00:11:22:33:44:55, or\n"
-					  "  - a hostname with a known 'ethers' entry.\n");
+		(void)fprintf(
+			stderr,
+			"etherwake-nfqueue: The Magic Packet host address must be "
+			"specified as\n"
+			"  - a station address, 00:11:22:33:44:55, or\n"
+			"  - a hostname with a known 'ethers' entry.\n");
 		return -1;
 	}
 	return 0;
 }
-
 
 static int get_fill(unsigned char *pkt, struct ether_addr *eaddr)
 {
@@ -320,19 +341,19 @@ static int get_fill(unsigned char *pkt, struct ether_addr *eaddr)
 	unsigned char *station_addr = eaddr->ether_addr_octet;
 
 	if (opt_broadcast)
-		memset(pkt+0, 0xff, 6);
+		memset(pkt + 0, 0xff, 6);
 	else
 		memcpy(pkt, station_addr, 6);
-	memcpy(pkt+6, station_addr, 6);
-	pkt[12] = 0x08;				/* Or 0x0806 for ARP, 0x8035 for RARP */
+	memcpy(pkt + 6, station_addr, 6);
+	pkt[12] = 0x08; /* Or 0x0806 for ARP, 0x8035 for RARP */
 	pkt[13] = 0x42;
 	offset = 14;
 
-	memset(pkt+offset, 0xff, 6);
+	memset(pkt + offset, 0xff, 6);
 	offset += 6;
 
 	for (i = 0; i < 16; i++) {
-		memcpy(pkt+offset, station_addr, 6);
+		memcpy(pkt + offset, station_addr, 6);
 		offset += 6;
 	}
 	if (debug) {
@@ -350,18 +371,18 @@ static int get_wol_pw(const char *optarg)
 	int byte_cnt;
 	int i;
 
-	byte_cnt = sscanf(optarg, "%2x:%2x:%2x:%2x:%2x:%2x",
-					  &passwd[0], &passwd[1], &passwd[2],
-					  &passwd[3], &passwd[4], &passwd[5]);
+	byte_cnt = sscanf(optarg, "%2x:%2x:%2x:%2x:%2x:%2x", &passwd[0],
+			  &passwd[1], &passwd[2], &passwd[3], &passwd[4],
+			  &passwd[5]);
 	if (byte_cnt < 4)
-		byte_cnt = sscanf(optarg, "%d.%d.%d.%d",
-						  &passwd[0], &passwd[1], &passwd[2], &passwd[3]);
+		byte_cnt = sscanf(optarg, "%d.%d.%d.%d", &passwd[0], &passwd[1],
+				  &passwd[2], &passwd[3]);
 	if (byte_cnt < 4) {
 		fprintf(stderr, "Unable to read the Wake-On-LAN password.\n");
 		return 0;
 	}
 	printf(" The Magic packet password is %2.2x %2.2x %2.2x %2.2x (%d).\n",
-		   passwd[0], passwd[1], passwd[2], passwd[3], byte_cnt);
+	       passwd[0], passwd[1], passwd[2], passwd[3], byte_cnt);
 	for (i = 0; i < byte_cnt; i++)
 		wol_passwd[i] = passwd[i];
 	return wol_passwd_sz = byte_cnt;
@@ -375,7 +396,8 @@ static int get_nfqueue_num(const char *optarg)
 	errno = 0;
 	val = strtoul(optarg, &endptr, 10);
 
-	if (errno != 0 || val > UINT16_MAX || endptr == optarg || *endptr != '\0') {
+	if (errno != 0 || val > UINT16_MAX || endptr == optarg ||
+	    *endptr != '\0') {
 		return -1;
 	}
 
